@@ -1,0 +1,73 @@
+services:
+  - type: web
+    name: mastodon-web
+    env: ruby
+    plan: starter
+    buildCommand: |
+      bundle install
+      yarn install --pure-lockfile
+      bundle exec rake assets:precompile
+    startCommand: bundle exec rails s
+    envVars:
+      - key: RAILS_ENV
+        value: production
+      - key: LOCAL_DOMAIN
+        value: your-domain.com
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      - key: OTP_SECRET
+        generateValue: true
+      - key: STREAMING_API_BASE_URL
+        value: https://your-domain.com
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: SMTP_SERVER
+        value: smtp.yourprovider.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_LOGIN
+        value: youremail@domain.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_ADDRESS
+        value: Mastodon <no-reply@your-domain.com>
+    autoDeploy: true
+    healthCheckPath: /
+
+  - type: worker
+    name: mastodon-sidekiq
+    env: ruby
+    plan: starter
+    buildCommand: |
+      bundle install
+      yarn install --pure-lockfile
+    startCommand: bundle exec sidekiq
+    envVars:
+      - fromService:
+          name: mastodon-web
+          type: web
+
+  - type: web
+    name: mastodon-streaming
+    env: node
+    plan: starter
+    buildCommand: yarn install --pure-lockfile
+    startCommand: yarn start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - fromService:
+          name: mastodon-web
+          type: web
+
+databases:
+  - name: mastodon-db
+    plan: starter
+    databaseName: mastodon
+    user: mastodon
+
+keyValues:
+  - name: mastodon-redis
+    plan: starter
