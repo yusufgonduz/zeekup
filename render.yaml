@@ -1,66 +1,131 @@
+# render.yaml — Mastodon (Blueprint)
+# Servisler: web (Rails/Puma), streaming (Node.js), sidekiq (jobs)
+# Kaynaklar: Postgres, Redis
+
 services:
   - type: web
     name: mastodon-web
     env: ruby
     plan: starter
+    repo: .
     buildCommand: |
-      bundle install
+      bundle install -j4
       yarn install --pure-lockfile
-      bundle exec rake assets:precompile
-    startCommand: bundle exec rails s
+      RAILS_ENV=production bundle exec rails assets:precompile
+    preDeployCommand: RAILS_ENV=production bundle exec rails db:migrate
+    startCommand: bundle exec puma -C config/puma.rb
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # ==== ZORUNLU ====
+      - key: RAILS_ENV
+        value: production
+      - key: LOCAL_DOMAIN
+        value: your-domain.com                  # Örn: social.seninmarkan.com
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      - key: OTP_SECRET
+        generateValue: true
+
+      # DB & Redis bağlantıları (Render kaynaklarından otomatik enjekte)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mastodon-db
+          property: connectionString
+      - key: REDIS_URL
+        fromRedis:
+          name: mastodon-redis
+          property: connectionString
+
+      # ==== SMTP (e-posta doğrulama için şart) ====
+      - key: SMTP_SERVER
+        value: smtp.yourprovider.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_LOGIN
+        value: you@your-domain.com
+      - key: SMTP_PASSWORD
+        # Şifreleri panelden gir; sync:false demek: değer UI’dan gelecek
+        sync: false
+      - key: SMTP_FROM_ADDRESS
+        value: "Mastodon <no-reply@your-domain.com>"
+      - key: SMTP_AUTH_METHOD
+        value: plain
+      - key: SMTP_ENABLE_STARTTLS
+        value: true
+
+      # ==== Web Push (deploy sonrası oluşturup girilecek) ====
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+
+      # ==== Streaming URL (deploy’dan sonra gerçek hostname ile güncelle) ====
+      # Örn: wss://mastodon-streaming-xxxx.onrender.com
+      - key: STREAMING_API_BASE_URL
+        value: wss://YOUR_STREAMING_HOSTNAME
+
+      # Üretimde statik dosyaları Rails’in servis etmesi için:
+      - key: RAILS_SERVE_STATIC_FILES
+        value: true
+
+  - type: worker
+    name: mastodon-sidekiq
+    env: ruby
+    plan: starter
+    repo: .
+    buildCommand: |
+      bundle install -j4
+      yarn install --pure-lockfile
+    startCommand: bundle exec sidekiq -q default -q mailers -q pull -q push
+    autoDeploy: true
     envVars:
       - key: RAILS_ENV
         value: production
       - key: LOCAL_DOMAIN
         value: your-domain.com
       - key: SECRET_KEY_BASE
-        generateValue: true
-      - key: OTP_SECRET
-        generateValue: true
-      - key: STREAMING_API_BASE_URL
-        value: https://your-domain.com
-      - key: VAPID_PRIVATE_KEY
-        sync: false
-      - key: VAPID_PUBLIC_KEY
-        sync: false
-      - key: SMTP_SERVER
-        value: smtp.yourprovider.com
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_LOGIN
-        value: youremail@domain.com
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_ADDRESS
-        value: Mastodon <no-reply@your-domain.com>
-    autoDeploy: true
-    healthCheckPath: /
-
-  - type: worker
-    name: mastodon-sidekiq
-    env: ruby
-    plan: starter
-    buildCommand: |
-      bundle install
-      yarn install --pure-lockfile
-    startCommand: bundle exec sidekiq
-    envVars:
-      - fromService:
+        fromService:
           name: mastodon-web
           type: web
+          envVarKey: SECRET_KEY_BASE
+      - key: OTP_SECRET
+        fromService:
+          name: mastodon-web
+          type: web
+          envVarKey: OTP_SECRET
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mastodon-db
+          property: connectionString
+      - key: REDIS_URL
+        fromRedis:
+          name: mastodon-redis
+          property: connectionString
 
   - type: web
     name: mastodon-streaming
     env: node
     plan: starter
-    buildCommand: yarn install --pure-lockfile
-    startCommand: yarn start
+    repo: .
+    buildCommand: |
+      yarn install --pure-lockfile
+    # Render PORT değişkenini otomatik atar; komut prod index’i başlatır
+    startCommand: node ./streaming/index.js
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - fromService:
-          name: mastodon-web
-          type: web
+      - key: LOCAL_DOMAIN
+        value: your-domain.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mastodon-db
+          property: connectionString
+      - key: REDIS_URL
+        fromRedis:
+          name: mastodon-redis
+          property: connectionString
 
 databases:
   - name: mastodon-db
@@ -68,6 +133,6 @@ databases:
     databaseName: mastodon
     user: mastodon
 
-keyValues:
+redis:
   - name: mastodon-redis
     plan: starter
