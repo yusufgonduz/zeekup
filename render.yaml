@@ -1,6 +1,6 @@
 # render.yaml — Mastodon (Blueprint)
 # Servisler: web (Rails/Puma), streaming (Node.js), sidekiq (jobs)
-# Kaynaklar: Postgres, Redis
+# Kaynaklar: Postgres (Blueprint ile), Redis (UI'dan eklenecek)
 
 services:
   - type: web
@@ -27,17 +27,18 @@ services:
       - key: OTP_SECRET
         generateValue: true
 
-      # DB & Redis bağlantıları (Render kaynaklarından otomatik enjekte)
+      # ==== DB ====
       - key: DATABASE_URL
         fromDatabase:
           name: mastodon-db
           property: connectionString
-      - key: REDIS_URL
-        fromRedis:
-          name: mastodon-redis
-          property: connectionString
 
-      # ==== SMTP (e-posta doğrulama için şart) ====
+      # ==== REDIS ====
+      # Redis'i Render UI'dan (Add new → Key Value) oluşturup URL'yi buraya yapıştıracaksın.
+      - key: REDIS_URL
+        sync: false
+
+      # ==== SMTP ====
       - key: SMTP_SERVER
         value: smtp.yourprovider.com
       - key: SMTP_PORT
@@ -45,7 +46,6 @@ services:
       - key: SMTP_LOGIN
         value: you@your-domain.com
       - key: SMTP_PASSWORD
-        # Şifreleri panelden gir; sync:false demek: değer UI’dan gelecek
         sync: false
       - key: SMTP_FROM_ADDRESS
         value: "Mastodon <no-reply@your-domain.com>"
@@ -54,14 +54,14 @@ services:
       - key: SMTP_ENABLE_STARTTLS
         value: true
 
-      # ==== Web Push (deploy sonrası oluşturup girilecek) ====
+      # ==== Web Push (deploy sonrası üretilecek) ====
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
 
       # ==== Streaming URL (deploy’dan sonra gerçek hostname ile güncelle) ====
-      # Örn: wss://mastodon-streaming-xxxx.onrender.com
+      # Örn: wss://mastodon-streaming-XXXX.onrender.com
       - key: STREAMING_API_BASE_URL
         value: wss://YOUR_STREAMING_HOSTNAME
 
@@ -99,9 +99,10 @@ services:
           name: mastodon-db
           property: connectionString
       - key: REDIS_URL
-        fromRedis:
-          name: mastodon-redis
-          property: connectionString
+        fromService:
+          name: mastodon-web
+          type: web
+          envVarKey: REDIS_URL
 
   - type: web
     name: mastodon-streaming
@@ -110,7 +111,6 @@ services:
     repo: .
     buildCommand: |
       yarn install --pure-lockfile
-    # Render PORT değişkenini otomatik atar; komut prod index’i başlatır
     startCommand: node ./streaming/index.js
     autoDeploy: true
     envVars:
@@ -123,16 +123,13 @@ services:
           name: mastodon-db
           property: connectionString
       - key: REDIS_URL
-        fromRedis:
-          name: mastodon-redis
-          property: connectionString
+        fromService:
+          name: mastodon-web
+          type: web
+          envVarKey: REDIS_URL
 
 databases:
   - name: mastodon-db
     plan: starter
     databaseName: mastodon
     user: mastodon
-
-redis:
-  - name: mastodon-redis
-    plan: starter
