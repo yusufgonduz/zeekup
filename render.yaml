@@ -1,6 +1,4 @@
-# render.yaml — Mastodon (Render Blueprint)
-# Servisler: web (Rails/Puma), streaming (Node.js), sidekiq (jobs)
-# Kaynaklar: Postgres (Blueprint ile), Redis (UI'dan eklenecek)
+# render.yaml — Mastodon (Render Blueprint, UI-managed DB/Redis)
 
 services:
   - type: web
@@ -20,20 +18,15 @@ services:
       - key: RAILS_ENV
         value: production
       - key: LOCAL_DOMAIN
-        value: your-domain.com                  # Örn: social.seninmarkan.com
+        value: your-domain.com            # Örn: social.seninmarkan.com
       - key: SECRET_KEY_BASE
         generateValue: true
       - key: OTP_SECRET
         generateValue: true
 
-      # ==== DB ====
+      # ==== DB & REDIS (UI'dan oluşturulacak, bu servise elinle yapıştıracaksın) ====
       - key: DATABASE_URL
-        fromDatabase:
-          name: mastodon-db
-          property: connectionString
-
-      # ==== REDIS ====
-      # Redis'i Render UI'dan (Add New → Key Value) oluşturup URL'yi buraya panelden yapıştıracaksın.
+        sync: false
       - key: REDIS_URL
         sync: false
 
@@ -64,7 +57,6 @@ services:
       - key: STREAMING_API_BASE_URL
         value: wss://YOUR_STREAMING_HOSTNAME
 
-      # Üretimde statik dosyaları Rails’in servis etmesi için:
       - key: RAILS_SERVE_STATIC_FILES
         value: true
 
@@ -93,9 +85,10 @@ services:
           type: web
           envVarKey: OTP_SECRET
       - key: DATABASE_URL
-        fromDatabase:
-          name: mastodon-db
-          property: connectionString
+        fromService:
+          name: mastodon-web
+          type: web
+          envVarKey: DATABASE_URL
       - key: REDIS_URL
         fromService:
           name: mastodon-web
@@ -116,17 +109,12 @@ services:
       - key: LOCAL_DOMAIN
         value: your-domain.com
       - key: DATABASE_URL
-        fromDatabase:
-          name: mastodon-db
-          property: connectionString
+        fromService:
+          name: mastodon-web
+          type: web
+          envVarKey: DATABASE_URL
       - key: REDIS_URL
         fromService:
           name: mastodon-web
           type: web
           envVarKey: REDIS_URL
-
-databases:
-  - name: mastodon-db
-    plan: starter-plus        # << önce 'starter'dı; Render artık kabul etmiyor
-    databaseName: mastodon
-    user: mastodon
