@@ -1,4 +1,4 @@
-# render.yaml — Mastodon (Blueprint)
+# render.yaml — Mastodon (Render Blueprint)
 # Servisler: web (Rails/Puma), streaming (Node.js), sidekiq (jobs)
 # Kaynaklar: Postgres (Blueprint ile), Redis (UI'dan eklenecek)
 
@@ -16,20 +16,28 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # ==== ZORUNLU ====
       - key: RAILS_ENV
         value: production
       - key: LOCAL_DOMAIN
-        value: your-domain.com
+        value: your-domain.com                  # Örn: social.seninmarkan.com
       - key: SECRET_KEY_BASE
         generateValue: true
       - key: OTP_SECRET
         generateValue: true
+
+      # ==== DB ====
       - key: DATABASE_URL
         fromDatabase:
           name: mastodon-db
           property: connectionString
+
+      # ==== REDIS ====
+      # Redis'i Render UI'dan (Add New → Key Value) oluşturup URL'yi buraya panelden yapıştıracaksın.
       - key: REDIS_URL
         sync: false
+
+      # ==== SMTP ====
       - key: SMTP_SERVER
         value: smtp.yourprovider.com
       - key: SMTP_PORT
@@ -44,12 +52,19 @@ services:
         value: plain
       - key: SMTP_ENABLE_STARTTLS
         value: true
+
+      # ==== Web Push (deploy sonrası üretilecek) ====
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
+
+      # ==== Streaming URL (deploy’dan sonra gerçek hostname ile güncelle) ====
+      # Örn: wss://mastodon-streaming-XXXX.onrender.com
       - key: STREAMING_API_BASE_URL
         value: wss://YOUR_STREAMING_HOSTNAME
+
+      # Üretimde statik dosyaları Rails’in servis etmesi için:
       - key: RAILS_SERVE_STATIC_FILES
         value: true
 
@@ -112,6 +127,6 @@ services:
 
 databases:
   - name: mastodon-db
-    plan: starter
+    plan: starter-plus        # << önce 'starter'dı; Render artık kabul etmiyor
     databaseName: mastodon
     user: mastodon
